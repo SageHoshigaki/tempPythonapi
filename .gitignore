@@ -1,0 +1,39 @@
+# --- videos / media ---
+*.mp4
+*.mov
+*.m4v
+*.avi
+*.mkv
+*.webm
+*.mp3
+*.wav
+*.flac
+*.aac
+*.m4a
+
+# common upload/output folders (rename to match yours)
+uploads/
+output/
+tmp/
+temp/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.so
+*.egg-info/
+dist/
+build/
+
+# virtual environments
+.venv/
+venv/
+
+# env files
+.env
+.env.*
+
+# macOS
+.DS_Store
