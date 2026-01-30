@@ -6,11 +6,6 @@ import httpx
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-# Optional: validate MP4 container using PyAV (you said it's already in project)
-# If you don't want validation, set VALIDATE_WITH_PYAV=0 in env or remove this block.
-VALIDATE_WITH_PYAV = os.getenv("VALIDATE_WITH_PYAV", "0") == "1"
-if VALIDATE_WITH_PYAV:
-    import av  # PyAV
 
 
 # ====== CONFIG (set these on Render as env vars) ======
