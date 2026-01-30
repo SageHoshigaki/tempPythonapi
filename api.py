@@ -20,11 +20,16 @@ def health():
 
 @app.post("/upload")
 async def upload_mp4(file: UploadFile = File(...)):
+    # minimal validation
     if not file.filename or not file.filename.lower().endswith(".mp4"):
         raise HTTPException(status_code=400, detail="Only .mp4 files are supported")
 
     file_id = uuid4().hex
 
+    # Render logs: prints to your service logs
+    print(f"[UPLOAD] uuid={file_id} filename={file.filename}")
+
+    # NOTE: not storing the file yet—just generating an id
     return {
         "file_id": file_id,
         "original_filename": file.filename,
@@ -34,4 +39,6 @@ async def upload_mp4(file: UploadFile = File(...)):
 
 @app.get("/forward/{file_id}")
 def forward_mp4(file_id: str):
+    # skeleton for later
+    print(f"[FORWARD] requested file_id={file_id}")
     return {"message": "forward skeleton", "file_id": file_id}
