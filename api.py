@@ -1,8 +1,18 @@
 from uuid import uuid4
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="MP4 Gateway (UUID only)")
+
+# Completely open CORS (any origin can call your API)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,  # keep False when allow_origins=["*"]
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/health")
 def health():
@@ -10,13 +20,11 @@ def health():
 
 @app.post("/upload")
 async def upload_mp4(file: UploadFile = File(...)):
-    # minimal validation
     if not file.filename or not file.filename.lower().endswith(".mp4"):
         raise HTTPException(status_code=400, detail="Only .mp4 files are supported")
 
-    file_id = uuid4().hex  # UUID attached to this upload
+    file_id = uuid4().hex
 
-    # NOTE: we are NOT storing anything yet — just generating the id
     return {
         "file_id": file_id,
         "original_filename": file.filename,
@@ -26,5 +34,4 @@ async def upload_mp4(file: UploadFile = File(...)):
 
 @app.get("/forward/{file_id}")
 def forward_mp4(file_id: str):
-    # skeleton for later
     return {"message": "forward skeleton", "file_id": file_id}
