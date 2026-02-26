@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Recognition Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-950 text-gray-100 min-h-screen p-10">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-center mb-10">
+            <h1 class="text-3xl font-bold">🎵 Audio Recognition Console</h1>
+            <span id="statusBadge" class="px-4 py-2 rounded-full text-sm bg-gray-700 text-gray-300">Idle</span>
+        </div>
+
+        <!-- CONNECT BY CLIENT ID -->
+        <div class="bg-gray-900 p-6 rounded-2xl shadow-lg mb-10">
+            <div class="flex flex-col gap-3">
+                <div class="flex flex-col md:flex-row items-stretch gap-3">
+                    <input id="clientIdInput" type="text"
+                        placeholder="Paste client_id (e.g. ace6bbe51a84470ab8ef64021762ef40)"
+                        class="w-full p-3 rounded-lg bg-gray-800 border border-gray-700" />
+
+                    <button id="connectBtn" onclick="connectFromInput()"
+                        class="px-6 py-3 bg-indigo-600 rounded-lg hover:bg-indigo-500 transition">
+                        Connect
+                    </button>
+
+                    <button id="disconnectBtn" onclick="disconnect()"
+                        class="px-6 py-3 bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 transition"
+                        disabled>
+                        Disconnect
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+                    <div>
+                        client_id:
+                        <span id="clientIdText" class="text-gray-200">--</span>
+                    </div>
+
+                    <button onclick="copyClientId()"
+                        class="px-3 py-1 rounded-md bg-gray-800 border border-gray-700 hover:bg-gray-700 transition">
+                        Copy
+                    </button>
+
+                    <button onclick="clearUI()"
+                        class="px-3 py-1 rounded-md bg-gray-800 border border-gray-700 hover:bg-gray-700 transition">
+                        Clear
+                    </button>
+
+                    <button onclick="shareLink()"
+                        class="px-3 py-1 rounded-md bg-gray-800 border border-gray-700 hover:bg-gray-700 transition"
+                        title="Copies a shareable URL with ?client_id=">
+                        Share Link
+                    </button>
+
+                    <span id="hint" class="text-gray-500">Paste a client_id and click Connect. You can also open this
+                        page with
+                        <span class="text-gray-300">?client_id=...</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- METRICS GRID -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div class="bg-gray-900 p-6 rounded-2xl shadow-lg">
+                <p class="text-gray-400 text-sm">RMS (dBFS)</p>
+                <p id="rms" class="text-3xl font-semibold text-green-400">--</p>
+                <p id="rmsHint" class="text-xs text-gray-500 mt-2">
+                    Target: louder than ~ -35 dBFS
+                </p>
+            </div>
+
+            <div class="bg-gray-900 p-6 rounded-2xl shadow-lg">
+                <p class="text-gray-400 text-sm">Peak (dBFS)</p>
+                <p id="peak" class="text-3xl font-semibold text-blue-400">--</p>
+                <p class="text-xs text-gray-500 mt-2">Avoid 0 dBFS (clipping)</p>
+            </div>
+
+            <div class="bg-gray-900 p-6 rounded-2xl shadow-lg">
+                <p class="text-gray-400 text-sm">Matched</p>
+                <p id="matched" class="text-3xl font-semibold text-purple-400">--</p>
+                <p id="matchLabel" class="text-xs text-gray-500 mt-2">Waiting…</p>
+            </div>
+        </div>
+
+        <!-- DETAILS -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            <div class="bg-gray-900 p-6 rounded-2xl shadow-lg">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-gray-300">Audio Probe</h2>
+                    <span id="probeBadge"
+                        class="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 text-gray-400">--</span>
+                </div>
+                <pre id="probe" class="text-sm text-gray-400 whitespace-pre-wrap break-words"></pre>
+            </div>
+
+            <div class="bg-gray-900 p-6 rounded-2xl shadow-lg">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-gray-300">Provider Result</h2>
+                    <span id="providerBadge"
+                        class="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 text-gray-400">AudD</span>
+                </div>
+                <pre id="result" class="text-sm text-gray-400 whitespace-pre-wrap break-words"></pre>
+            </div>
+        </div>
+
+        <!-- LIVE EVENT TIMELINE -->
+        <div class="bg-gray-900 p-6 rounded-2xl shadow-lg">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-300">Live Events</h2>
+                <span class="text-xs text-gray-500">Newest on top</span>
+            </div>
+            <div id="events" class="space-y-2 max-h-[420px] overflow-auto pr-2"></div>
+        </div>
+    </div>
+
+    <script>
+        // If dashboard is served from same FastAPI server, keep it relative.
+        // If not, set to "http://127.0.0.1:8000"
+        const API_BASE = "";
+
+        let es = null;
+        let currentClientId = null;
+
+        function setStatus(text, colorClass) {
+            const badge = document.getElementById("statusBadge");
+            badge.textContent = text;
+            badge.className = `px-4 py-2 rounded-full text-sm ${colorClass}`;
+        }
+
+        function nowTime() {
+            return new Date().toLocaleTimeString();
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;");
+        }
+
+        function pushEventCard(data) {
+            const el = document.getElementById("events");
+
+            const step = data.step ?? "--";
+            const status = data.status ?? data.message ?? "";
+            const t = nowTime();
+
+            let badgeClass = "bg-gray-800 border border-gray-700 text-gray-300";
+            if (data.step === "error") badgeClass = "bg-red-600 text-white";
+            if (data.step === "finished") badgeClass = "bg-green-600 text-white";
+            if (data.status === "calling_audd") badgeClass = "bg-indigo-600 text-white";
+            if (data.status === "sending_to_audd") badgeClass = "bg-yellow-600 text-white";
+
+            const compact = JSON.stringify(data);
+
+            const card = document.createElement("div");
+            card.className = "rounded-xl border border-gray-800 bg-gray-950/40 p-3";
+
+            card.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-xs text-gray-500">${t}</div>
+              <div class="mt-1 text-sm text-gray-200 break-words">
+                <span class="font-semibold">step:</span> ${escapeHtml(step)}
+                ${status ? ` · <span class="text-gray-400">${escapeHtml(status)}</span>` : ""}
+              </div>
+            </div>
+            <span class="shrink-0 px-2 py-1 rounded-md text-xs ${badgeClass}">
+              ${escapeHtml(data.step === "error" ? "error" : data.step === "finished" ? "done" : "event")}
+            </span>
+          </div>
+          <details class="mt-2">
+            <summary class="text-xs text-gray-400 cursor-pointer select-none">details</summary>
+            <pre class="mt-2 text-xs text-gray-400 whitespace-pre-wrap break-words">${escapeHtml(compact)}</pre>
+          </details>
+        `;
+
+            el.prepend(card);
+        }
+
+        function updateMetrics(data) {
+            if (data.status === "metrics_selected") {
+                const rms = data.rms_dbfs ?? "--";
+                const peak = data.peak_dbfs ?? "--";
+                document.getElementById("rms").textContent = rms;
+                document.getElementById("peak").textContent = peak;
+
+                const rmsHint = document.getElementById("rmsHint");
+                const n = typeof rms === "number" ? rms : parseFloat(rms);
+                if (!Number.isNaN(n)) {
+                    if (n < -40) rmsHint.textContent = "Too quiet — AudD often fails here.";
+                    else if (n < -30) rmsHint.textContent = "Okay, but louder is better.";
+                    else rmsHint.textContent = "Good level for fingerprinting.";
+                } else {
+                    rmsHint.textContent = "Target: louder than ~ -35 dBFS";
+                }
+            }
+        }
+
+        function updateProbeAndResult(data) {
+            if (data.status === "input_probe") {
+                document.getElementById("probe").textContent = JSON.stringify(data, null, 2);
+                document.getElementById("probeBadge").textContent = data.has_audio ? "audio: yes" : "audio: no";
+            }
+
+            if (data.step === 5) {
+                const matched = !!data.matched;
+                document.getElementById("matched").textContent = matched ? "Yes" : "No";
+                document.getElementById("matchLabel").textContent =
+                    matched ? `${data.song_title ?? ""}${data.artist ? " — " + data.artist : ""}` : "No match";
+                document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+            }
+
+            if (data.step === "finished") {
+                const raw = data.audd_raw ?? data.raw ?? data;
+                document.getElementById("result").textContent = JSON.stringify(raw, null, 2);
+            }
+        }
+
+        function isValidClientId(id) {
+            // your server uses uuid4().hex -> 32 hex chars
+            return /^[a-f0-9]{32}$/i.test(id);
+        }
+
+        function connectFromInput() {
+            const id = document.getElementById("clientIdInput").value.trim();
+            if (!id) return alert("Paste a client_id first.");
+            if (!isValidClientId(id)) {
+                // still allow, but warn (in case you ever change id format)
+                if (!confirm("That client_id doesn’t look like 32 hex chars. Connect anyway?")) return;
+            }
+            clearUI();
+            connectToClientId(id);
+        }
+
+        function connectToClientId(clientId) {
+            disconnect();
+
+            currentClientId = clientId;
+            document.getElementById("clientIdText").textContent = clientId;
+            document.getElementById("clientIdInput").value = clientId;
+            document.getElementById("disconnectBtn").disabled = false;
+
+            setStatus("Streaming…", "bg-yellow-600 text-white");
+            pushEventCard({ step: "ui", status: "connecting", client_id: clientId });
+
+            es = new EventSource(`${API_BASE}/events/${clientId}`);
+
+            es.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                pushEventCard(data);
+                updateMetrics(data);
+                updateProbeAndResult(data);
+
+                if (data.step === "error") setStatus("Error", "bg-red-600 text-white");
+                if (data.step === "finished") setStatus("Complete", "bg-green-600 text-white");
+            };
+
+            es.onerror = () => {
+                setStatus("Disconnected", "bg-gray-600 text-white");
+                pushEventCard({ step: "ui", status: "sse_error_or_closed" });
+            };
+        }
+
+        function disconnect() {
+            if (es) {
+                es.close();
+                es = null;
+            }
+            document.getElementById("disconnectBtn").disabled = true;
+        }
+
+        function clearUI() {
+            document.getElementById("rms").textContent = "--";
+            document.getElementById("peak").textContent = "--";
+            document.getElementById("matched").textContent = "--";
+            document.getElementById("matchLabel").textContent = "Waiting…";
+            document.getElementById("probe").textContent = "";
+            document.getElementById("result").textContent = "";
+            document.getElementById("probeBadge").textContent = "--";
+            document.getElementById("events").innerHTML = "";
+        }
+
+        async function copyClientId() {
+            const id = currentClientId || document.getElementById("clientIdText").textContent;
+            if (!id || id === "--") return;
+
+            try {
+                await navigator.clipboard.writeText(id);
+                flashHint("Copied client_id.");
+            } catch {
+                prompt("Copy client_id:", id);
+            }
+        }
+
+        async function shareLink() {
+            const id = currentClientId || document.getElementById("clientIdInput").value.trim();
+            if (!id) return alert("No client_id to share.");
+
+            const url = new URL(window.location.href);
+            url.searchParams.set("client_id", id);
+
+            try {
+                await navigator.clipboard.writeText(url.toString());
+                flashHint("Copied share link (with ?client_id=...).");
+            } catch {
+                prompt("Copy link:", url.toString());
+            }
+        }
+
+        function flashHint(text) {
+            const hint = document.getElementById("hint");
+            const old = hint.textContent;
+            hint.textContent = text;
+            setTimeout(() => (hint.textContent = old), 1200);
+        }
+
+        // Auto-connect via URL param (?client_id=...)
+        (function autoConnect() {
+            const params = new URLSearchParams(window.location.search);
+            const id = (params.get("client_id") || "").trim();
+            if (id) {
+                clearUI();
+                connectToClientId(id);
+            }
+        })();
+    </script>
+</body>
+
+</html>
